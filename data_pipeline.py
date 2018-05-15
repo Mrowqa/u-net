@@ -1,13 +1,5 @@
 import tensorflow as tf
-
-PARALLEL_CALLS = 4
-BATCH_SIZE = 16
-IMG_EDGE_SIZE = 2048
-#  512  -- 0.9662759286385996
-# 1024  -- 0.9845252143012153
-# 2048  -- 0.9945694534866898
-HOW_MANY_PREFETCH = 1
-CATEGORIES_CNT = 66
+from params import *
 
 
 # TODO some tf name scopes?
@@ -39,7 +31,7 @@ def parse_function(image_file, label_file):
 
     # Don't use tf.image.decode_image, or the output shape will be undefined
     image = tf.image.decode_jpeg(image_string, channels=3, ratio=1)
-    orig_label = label = tf.image.decode_png(label_string, channels=1)
+    orig_label = label = tf.image.decode_png(label_string, channels=LABEL_CHANNELS)
 
     # This will convert to float values in [0, 1]
     image = tf.image.convert_image_dtype(image, tf.float32)
