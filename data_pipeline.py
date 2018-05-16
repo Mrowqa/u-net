@@ -7,15 +7,14 @@ from params import *
 # https://cs230-stanford.github.io/tensorflow-input-data.html
 # https://www.tensorflow.org/versions/master/performance/datasets_performance
 # TODO with device CPU
-def build_input_pipeline(images_files, labels_files, is_training):
+def build_train_input_pipeline(images_labels_files, mb_size):
     # TODO I/O interleaving?
     # TODO cycle!
-    dataset = tf.data.Dataset.from_tensor_slices((images_files, labels_files))
-    dataset = dataset.shuffle(len(images_files))
-    dataset = dataset.map(parse_function, num_parallel_calls=PARALLEL_CALLS)
-    #if is_training:
-    #    dataset = dataset.map(train_preprocess, num_parallel_calls=PARALLEL_CALLS)
-    dataset = dataset.batch(BATCH_SIZE)
+    dataset = tf.data.Dataset.from_tensor_slices(images_labels_files)
+    dataset = dataset.shuffle(len(images_labels_files))
+    dataset = dataset.map(load_train_data, num_parallel_calls=PARALLEL_CALLS)
+    dataset = dataset.map(train_data_augmentation, num_parallel_calls=PARALLEL_CALLS)
+    dataset = dataset.batch(mb_size)
     dataset = dataset.prefetch(HOW_MANY_PREFETCH)
     return dataset
     # How to use:
@@ -25,52 +24,43 @@ def build_input_pipeline(images_files, labels_files, is_training):
     # inputs = {'images': images, 'labels': labels, 'iterator_init_op': iterator_init_op}
 
 
-def parse_function(image_file, label_file):
-    image_string = tf.read_file(image_file)
-    label_string = tf.read_file(label_file)
+def load_train_data(image_label_file):
+    image_string = tf.read_file(image_label_file[0])
+    label_string = tf.read_file(image_label_file[1])
 
     # Don't use tf.image.decode_image, or the output shape will be undefined
-    image = tf.image.decode_jpeg(image_string, channels=3, ratio=1)
-    orig_label = label = tf.image.decode_png(label_string, channels=LABEL_CHANNELS)
+    image = tf.image.decode_jpeg(image_string, channels=IMAGE_CHANNELS, ratio=1)
+    label = tf.image.decode_png(label_string, channels=LABEL_CHANNELS)
+
+    def scale_up(img, lbl, min_edge_val):
+        shape = tf.cast(tf.shape(img), tf.float64)
+        ratio = TRAIN_IMG_EDGE_SIZE / min_edge_val
+        new_height = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[0] * ratio, tf.int32))
+        new_width = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[1] * ratio, tf.int32))
+        new_size = [new_height, new_width]
+        img = tf.image.resize_images(img, new_size, method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
+        lbl = tf.image.resize_images(lbl, new_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+        return tf.cast(img, tf.uint8), lbl
+
+    min_edge = tf.minimum(tf.shape(image)[0], tf.shape(image)[1])
+    image, label = tf.cond(min_edge < TRAIN_IMG_EDGE_SIZE,
+                           lambda: scale_up(image, label, min_edge),
+                           lambda: (image, label))
+
+    image_label = tf.concat([image, label], axis=2)
+    image_label = tf.random_crop(image_label,
+                                 [TRAIN_IMG_EDGE_SIZE, TRAIN_IMG_EDGE_SIZE, IMAGE_CHANNELS + LABEL_CHANNELS])
+    image, label = tf.split(image_label, [IMAGE_CHANNELS, LABEL_CHANNELS], axis=2)
 
     # This will convert to float values in [0, 1]
     image = tf.image.convert_image_dtype(image, tf.float32)
-    shape = tf.shape(image)  # [height * width * channels]
+    label_1hot = tf.one_hot(tf.squeeze(label, axis=2), CATEGORIES_CNT, axis=-1)  # TODO move it to UNet.__init__()
 
-    def width_gt(image, label, shape):
-        size = [tf.cast(IMG_EDGE_SIZE * shape[0] / shape[1], tf.int32),  # height
-                tf.cast(IMG_EDGE_SIZE, tf.int32)]  # width
-        mask = tf.ones(size + [1], dtype=tf.bool)
-        image = tf.image.resize_images(image, size)
-        label = tf.image.resize_images(label, size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-
-        left_h = IMG_EDGE_SIZE - size[0]
-        left_h_up = tf.cast(left_h / 2, tf.int32)
-        left_h_down = left_h - left_h_up
-        padding = [[left_h_up, left_h_down], [0, 0], [0, 0]]
-        return image, label, mask, padding
-
-    image, label, mask, padding = tf.cond(shape[1] >= shape[0],
-                                          lambda: width_gt(image, label, shape),
-                                          lambda: width_gt(image, label, shape))  # todo analogus for heigth
-
-    image = tf.pad(image, padding, constant_values=0)
-    label = tf.pad(label, padding, constant_values=CATEGORIES_CNT)  # first out of range
-    mask = tf.pad(mask, padding, constant_values=False)
-
-    label_1hot = tf.one_hot(label, CATEGORIES_CNT, axis=-1)
-
-    return image, label_1hot, mask, orig_label, shape, padding
+    return image, label, label_1hot
 
 
-#def remap_values(tensor, mapping):
-#    for k, v in mapping.items():
-#        cond = tf.equal(tensor, k)
-#        tensor = tf.where(cond, tf.ones_like(tensor) * v, tensor)
-#    return tensor
-
-
-# def train_preprocess(image, label):
+def train_data_augmentation(*args):
+    return args
     # TODO
     # image = tf.image.random_flip_left_right(image)
 
@@ -83,12 +73,8 @@ def parse_function(image_file, label_file):
     # return image, label
 
 
-def save_to_file(filename, label, padding, orig_size):
-    shape = tf.shape(label)
-    label = label[padding[0][0]:shape[0]-padding[0][1], padding[1][0]:shape[1]-padding[1][1]]
-    # label = tf.reshape(label, shape + [1])  # let's assume we have this one extra channel
-    label = tf.image.resize_images(label, orig_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-    data_str = tf.image.encode_png(label)
+def encode_and_save_to_file(filename, preds):
+    data_str = tf.image.encode_png(preds)
     return tf.write_file(filename, data_str)
 
 

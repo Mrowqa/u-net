@@ -44,6 +44,13 @@ def select_part_for_training(dataset, part_no):
     }
 
 
+def build_full_paths(dataset, subset):
+    def map_to_img_lbl(fname):
+        return (os.path.join(dataset["data_dir"], "images", fname + ".jpg"),
+                os.path.join(dataset["data_dir"], "labels_plain", fname + ".png"))
+    return list([map_to_img_lbl(fname) for fname in dataset[subset]])
+
+
 def dump_to_file(dataset, filename):
     data = json.dumps(dataset)
     with open(filename, 'w') as f:
