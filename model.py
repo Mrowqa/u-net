@@ -5,13 +5,21 @@ from params import *
 class UNet:
     def __init__(self, layers):
         self.x = tf.placeholder(tf.float32, [None, IMG_EDGE_SIZE, IMG_EDGE_SIZE, LABEL_CHANNELS])
-        self.y_target = tf.placeholder(tf.float32, [None, IMG_EDGE_SIZE, IMG_EDGE_SIZE, LABEL_CHANNELS])
+        self.y_target = tf.placeholder(tf.float32, [None, IMG_EDGE_SIZE, IMG_EDGE_SIZE, CATEGORIES_CNT])
 
-        # TODO process layers
-        # sublist: new scope "Frame_{}"
+        signal = self.x
+        for fno, frame_desc in enumerate(layers):
+            with tf.variable_scope('Frame_{}'.format(fno)):
+                for lno, l in enumerate(frame_desc):
+                    signal = l.route_signal(signal, 'W{}_{}'.format(fno, lno))
 
+        signal = Conv2D(3, CATEGORIES_CNT, False).route_signal(signal, 'W_out')
+        # todo apply mask?
+        signal = tf.nn.softmax(signal - self.y_target)
+        # loss with softmax_xentropy with logits?
         # apply var that maps to one-hot-encoding output // %%
-        # softmax :)
+
+        # todo train step
 
     def train(self):
         pass
@@ -22,15 +30,17 @@ class Layer:
 
 
 class Conv2D(Layer):
-    def __init__(self, patch_edge, channels_out):
+    def __init__(self, patch_edge, channels_out, add_relu=True):
         self.patch_edge = patch_edge
         self.channels_out = channels_out
+        self.add_relu = add_relu
 
     def route_signal(self, signal, var_name):
         channels_in = signal.shape[3]
         weights = weight_variable(var_name, [self.patch_edge, self.patch_edge, channels_in, self.channels_out])
         signal = tf.nn.conv2d(signal, weights, strides=[1, 1, 1, 1], padding="SAME")
-        signal = tf.nn.relu(signal)
+        if self.add_relu:
+            signal = tf.nn.relu(signal)
         return signal
 
 
@@ -81,32 +91,30 @@ def weight_variable(name, shape):
 def main():
     stack = []
 
-    def block_down(channels, mp2x2=True):
-        ret = [
+    def double_conv(channels):
+        return [
             Conv2D(3, channels),
             Conv2D(3, channels),
         ]
-        if mp2x2:
-            ret += [
-                Push(stack),
-                MaxPool(2),
-            ]
-        return ret
+
+    def block_down(channels):
+        return double_conv(channels) + [
+            Push(stack),
+            MaxPool(2),
+        ]
 
     def block_up(channels):
         return [
             Deconv2D(2, channels),
             Concat(stack),
-            Conv2D(3, channels),
-            Conv2D(3, channels),
-        ]
+        ] + double_conv(channels)
 
     layers = [  # TODO note: check what are intermediate values
         block_down(16),
         block_down(32),
         block_down(64),
         block_down(128),
-        block_down(256, False),
+        double_conv(256),
         block_up(128),
         block_up(64),
         block_up(32),
