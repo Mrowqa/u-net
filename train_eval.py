@@ -26,7 +26,7 @@ def main():
     unet = m.create_model("test", True)
     dataset = tvs.select_part_for_training(tvs.load_from_file('data-split.json'), 0)
     for i in range(epochs):
-        log.info('------- Training: NEW EPOCH #{} (of {}) ---------'.format(i+1, epochs))
+        log.info('------- Training: NEW EPOCH #{} (of {}) ---------'.format(i+1, epochs))  # TODO move it to train() ?
         unet.train(dataset, mb_size, save_config)
         log.error('--- Validation not implemented :( ---------')
 

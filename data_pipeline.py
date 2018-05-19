@@ -15,6 +15,16 @@ def build_train_input_pipeline(images_labels_files, mb_size):
     return dataset
 
 
+def build_evaluate_input_pipeline(images_labels_files):
+    # TODO I/O interleaving?
+    dataset = tf.data.Dataset.from_tensor_slices(images_labels_files)
+    dataset = dataset.shuffle(len(images_labels_files))
+    dataset = dataset.map(load_evaluate_data, num_parallel_calls=PARALLEL_CALLS)
+    dataset = dataset.batch(1)
+    dataset = dataset.prefetch(HOW_MANY_PREFETCH)
+    return dataset
+
+
 def load_train_data(image_label_file):
     image_string = tf.read_file(image_label_file[0])
     label_string = tf.read_file(image_label_file[1])
@@ -62,6 +72,26 @@ def train_data_augmentation(*args):
     # image = tf.clip_by_value(image, 0.0, 1.0)
 
     # return image, label
+
+
+def flip_left_right(image):
+    # image is [height x width x channels]
+    return tf.reverse(image, axis=[1])  # reverse columns
+
+
+def load_evaluate_data(image_label_file):
+    image_string = tf.read_file(image_label_file[0])
+    image = tf.image.decode_jpeg(image_string, channels=IMAGE_CHANNELS, ratio=1)
+    image = tf.image.convert_image_dtype(image, tf.float32)
+
+    if image_label_file[1] is not None:
+        label_string = tf.read_file(image_label_file[1])
+        label = tf.image.decode_png(label_string, channels=LABEL_CHANNELS)
+        label_1hot = tf.one_hot(tf.squeeze(label, axis=2), CATEGORIES_CNT, axis=-1)  # TODO move it to UNet.__init__()
+    else:
+        label = label_1hot = None
+
+    return image, label, label_1hot
 
 
 def encode_and_save_to_file(filename, preds):
