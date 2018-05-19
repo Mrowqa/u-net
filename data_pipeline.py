@@ -2,14 +2,10 @@ import tensorflow as tf
 from params import *
 
 
-# TODO some tf name scopes?
-
 # https://cs230-stanford.github.io/tensorflow-input-data.html
 # https://www.tensorflow.org/versions/master/performance/datasets_performance
-# TODO with device CPU
 def build_train_input_pipeline(images_labels_files, mb_size):
     # TODO I/O interleaving?
-    # TODO cycle!
     dataset = tf.data.Dataset.from_tensor_slices(images_labels_files)
     dataset = dataset.shuffle(len(images_labels_files))
     dataset = dataset.map(load_train_data, num_parallel_calls=PARALLEL_CALLS)
@@ -17,11 +13,6 @@ def build_train_input_pipeline(images_labels_files, mb_size):
     dataset = dataset.batch(mb_size)
     dataset = dataset.prefetch(HOW_MANY_PREFETCH)
     return dataset
-    # How to use:
-    # images, labels = iterator.get_next()
-    # iterator_init_op = iterator.initializer
-    #
-    # inputs = {'images': images, 'labels': labels, 'iterator_init_op': iterator_init_op}
 
 
 def load_train_data(image_label_file):
@@ -76,43 +67,3 @@ def train_data_augmentation(*args):
 def encode_and_save_to_file(filename, preds):
     data_str = tf.image.encode_png(preds)
     return tf.write_file(filename, data_str)
-
-
-#################################
-def test():
-    im, l1h, _, _, sh, pad = parse_function(R"D:\students\dnn\assignment2\training\images\00qclUcInksIYnm19b1Xfw.jpg",
-                                            "00qclUcInksIYnm19b1Xfw.png")  #R"D:\students\dnn\assignment2\training\labels\00qclUcInksIYnm19b1Xfw.png")
-    sav = save_to_file("xd.png", tf.cast(tf.argmax(l1h, axis=3), dtype=tf.uint8), pad, sh[:2])
-    return sav
-
-
-def work(args):
-    lbs, verbose = args
-    from sess import sess
-    vals = set()
-    for i, l in enumerate(lbs):
-        if verbose:
-            print('{} / {}, {} '.format(i, 18000, len(vals)))
-        l = tf.image.decode_png(tf.read_file(l))
-        l = sess.run(l)
-        assert (l.shape[2] == 1)
-        vals = vals | set(l.flatten())
-        if len(vals) == CATEGORIES_CNT:
-            break
-    return vals
-def helper():
-    import glob
-    from multiprocessing import Pool, TimeoutError
-    lbs = glob.glob(R"D:\students\dnn\assignment2\training\labels\*.png")
-    lbs.sort()
-
-
-    pool = Pool(processes=6)
-    jobs = [(lbs[:100], True), (lbs[100:200], False),
-            (lbs[200:300], False), (lbs[300:400], False),
-            (lbs[400:500], False), (lbs[500:600], False),
-            ]
-    vals = pool.map(work, jobs)
-    vals = vals[0] | vals[1] | vals[2] | vals[3] | vals[4] | vals[5]
-    print('cnt:', len(vals))
-    print('vals:', vals)
