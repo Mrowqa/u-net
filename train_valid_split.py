@@ -61,5 +61,3 @@ def load_from_file(filename):
     with open(filename, 'r') as f:
         data = f.read()
         return json.loads(data)
-
-

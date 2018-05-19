@@ -7,13 +7,13 @@ import logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s %(levelname)-8s %(message)s',
-    datefmt='%m-%d %H:%M:%S')
+    datefmt='%Y-%m-%d %H:%M:%S')
 log = logging.getLogger('train_eval')
 
 
 def main():
     mb_size = 1 #2  # as meta params?
-    epochs = 10
+    epochs = 1
 
     save_config = {
         'initial_load': None,
@@ -28,6 +28,7 @@ def main():
     for i in range(epochs):
         log.info('------- Training: NEW EPOCH #{} (of {}) ---------'.format(i+1, epochs))
         unet.train(dataset, mb_size, save_config)
+        log.error('--- Validation not implemented :( ---------')
 
 
 if __name__ == '__main__':

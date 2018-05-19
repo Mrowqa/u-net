@@ -2,8 +2,10 @@ import tensorflow as tf
 import data_pipeline as dp
 import train_valid_split as tvs
 from params import *
+from utils import *
 import itertools
 import logging
+import os
 
 log = logging.getLogger('model')
 
@@ -40,6 +42,11 @@ class UNet:
         self.step_accuracy = tf.reduce_mean(tf.cast(tf.equal(self.y_target, self.preds), tf.float32))
         self.read_overall_accuracy, self.update_overall_accuracy = tf.metrics.accuracy(self.y_target, self.preds)
 
+        tf.summary.scalar('loss', self.loss)
+        tf.summary.scalar('accuracy', self.step_accuracy)
+        tf.summary.scalar('epoch mean accuracy (so far)', self.read_overall_accuracy)
+        self.summaries_merged = tf.summary.merge_all()
+
         # if training: ??
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         with tf.control_dependencies(update_ops):
@@ -54,9 +61,11 @@ class UNet:
             next_batch = ds.make_one_shot_iterator().get_next()
         saver = tf.train.Saver()
 
+        summary_dir = os.path.join(SUMMARIES_LOG_DIR, 'train/', file_formatted_now())
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
-        with tf.Session(config=config) as self.sess:
+        with tf.Session(config=config) as self.sess, \
+                tf.summary.FileWriter(summary_dir, self.sess.graph) as s_writer:
             tf.local_variables_initializer().run()
             if save_config and save_config['initial_load'] is not None:
                 saver.restore(self.sess, save_config['initial_load'])
@@ -67,13 +76,15 @@ class UNet:
             try:
                 for i in itertools.count():
                     img, lbl, lbl_1h = self.sess.run(next_batch)
-                    _, loss, acc, acc2 = \
-                        self.sess.run([self.train_step, self.loss, self.update_overall_accuracy, self.step_accuracy],
+                    _, loss, acc, acc2, summaries = \
+                        self.sess.run([self.train_step, self.loss, self.update_overall_accuracy, self.step_accuracy,
+                                       self.summaries_merged],
                                       feed_dict={self.x: img, self.y_target: lbl, self.y_target_1h: lbl_1h})
                     log.debug("Loss: {}, Epoch acc: {}, Step acc: {}".format(loss, acc, acc2))
+                    s_writer.add_summary(summaries, i)
                     if save_config and i % save_config['emergency_after_batches'] == 0:
                         save_path = saver.save(self.sess, save_config['emergency_save'])
-                        log.info("Model saved in path: {}".format(save_path))
+                        log.info("At step {}: Model saved in path: {}".format(i, save_path))
             except tf.errors.OutOfRangeError:
                 pass
 
