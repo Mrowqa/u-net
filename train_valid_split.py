@@ -2,6 +2,7 @@ import os
 import random
 import json
 import itertools
+import glob
 
 
 def create_split_from_directory(data_dir, parts_cnt, small_valid_size=0):
@@ -25,6 +26,11 @@ def create_split_from_directory(data_dir, parts_cnt, small_valid_size=0):
         imgs = imgs[step:]
     dataset["parts"].append(imgs)
     return dataset
+
+
+def get_evaluation_set(data_dir):
+    paths = glob.glob(os.path.join(data_dir, '*'))
+    return list([(p, os.path.split(p)[-1]) for p in paths])
 
 
 def select_part_for_training(dataset, part_no):
