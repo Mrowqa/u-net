@@ -11,13 +11,17 @@ logging.basicConfig(
 log = logging.getLogger('train_eval')
 
 
+# TODO validate -> one chunk? do at once!
+# TODO smaller valid set?
+# TODO more data aug!
+# TODO summaries not so often?
 def train_validate():
-    mb_size = 1  #2  # as meta params?
-    epochs = 1
-    channels_sf = 1  #2
-    model_name = "test"
-    model_load = None  # 'm1'
-    model_save = 'm2-x'
+    mb_size = 1  # as meta params?
+    epochs = 3
+    channels_sf = 2
+    model_name = "put / here ! sth"
+    model_load = None
+    model_save = model_name
     data_split = 'data-split.json'
     data_split_part = 0
 
@@ -36,8 +40,8 @@ def train_validate():
             'final_save': save_path,
         }
         unet.train(dataset, mb_size, save_config)
-        # unet.validate(dataset, 'models/m2-emergency.ckpt')  # TODO put here głód staff
         unet.validate(dataset, save_path)
+    log.info("THE END.")
 
 
 def evaluate():

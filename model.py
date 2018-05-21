@@ -46,8 +46,8 @@ class UNet:
 
         with tf.name_scope('loss'):
             label_1hot = tf.one_hot(tf.squeeze(self.y_target, axis=3), CATEGORIES_CNT, axis=-1)
-            self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
-                logits=signal, labels=label_1hot))
+            xentropy = getattr(tf.nn, 'softmax_cross_entropy_with_logits_v2', tf.nn.softmax_cross_entropy_with_logits)
+            self.loss = tf.reduce_mean(xentropy(logits=signal, labels=label_1hot))
         with tf.name_scope('accuracy'):
             self.step_accuracy = tf.reduce_mean(tf.cast(tf.equal(self.y_target, self.preds), tf.float32))
             self.read_overall_accuracy, self.update_overall_accuracy = tf.metrics.mean(self.step_accuracy)
@@ -77,7 +77,7 @@ class UNet:
         assert self.training
         log.info('Training.')
 
-        train_files = tvs.build_full_paths(dataset, "train")[:10]  # TODO hack
+        train_files = tvs.build_full_paths(dataset, "train")  # [:10]  # TODO hack
         with tf.device('/cpu:0'):
             ds = dp.build_train_input_pipeline(train_files, mb_size)
             next_batch = ds.make_one_shot_iterator().get_next()
@@ -103,7 +103,8 @@ class UNet:
                                        self.loss_acc_summaries],
                                       feed_dict={self.x: img, self.y_target: lbl})
                     log.debug("Loss: {}, Epoch acc: {}, Step acc: {}".format(loss, acc, acc2))
-                    s_writer.add_summary(summaries, i)
+                    if i % 10 == 0:  # Note: ~16k is a lot of data, it overhelms tensorboard and takes a lot of disk space
+                        s_writer.add_summary(summaries, i)
                     if save_config and i % save_config['emergency_after_batches'] == 0:
                         save_path = saver.save(self.sess, save_config['emergency_save'])
                         log.info("At step {}: Model saved in path: {}".format(i, save_path))
@@ -121,7 +122,7 @@ class UNet:
         # assert not self.training
         log.info('Validating.')
 
-        valid_files = tvs.build_full_paths(dataset, "valid")[:10]  # TODO hack
+        valid_files = tvs.build_full_paths(dataset, "valid")[:100]  # [:10]  # TODO hack
         with tf.device('/cpu:0'):
             ds = dp.build_evaluate_input_pipeline(valid_files, for_validation=True)
             next_batch = ds.make_one_shot_iterator().get_next()
@@ -161,7 +162,7 @@ class UNet:
                                                      self.y_target: lbl})
                         log.debug("Loss: {}, Mov mean acc: {}, Step acc: {}".format(loss, acc, acc2))
                         s_writer.add_summary(summaries, step)
-                        if i % 100 == 0:
+                        if i % 20 == 0:  # TODO shouldn't output a lot of images!
                             # note: coloring is very slow
                             log.debug("Step {}: adding visualizations".format(step))
                             img_summaries = self.sess.run(self.images_summaries,
