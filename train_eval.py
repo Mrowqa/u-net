@@ -39,8 +39,9 @@ def train_validate():
             'emergency_after_batches': 100,
             'final_save': save_path,
         }
-        unet.train(dataset, mb_size, save_config)
-        unet.validate(dataset, save_path)
+        unet.train(dataset, mb_size, save_config, size_adjustment=True)
+        # Note: with size_adjustment, validation is somehow faster
+        unet.validate(dataset, save_path, size_adjustment=True)
     log.info("THE END.")
 
 

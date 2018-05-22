@@ -5,23 +5,23 @@ import numpy as np
 
 # https://cs230-stanford.github.io/tensorflow-input-data.html
 # https://www.tensorflow.org/versions/master/performance/datasets_performance
-def build_train_input_pipeline(images_labels_files, mb_size):
+def build_train_input_pipeline(images_labels_files, mb_size, size_adjustment=False):
     # TODO I/O interleaving?
     dataset = tf.data.Dataset.from_tensor_slices(images_labels_files)
     dataset = dataset.shuffle(len(images_labels_files))
-    dataset = dataset.map(load_train_data, num_parallel_calls=PARALLEL_CALLS)
+    dataset = dataset.map(load_train_data(size_adjustment), num_parallel_calls=PARALLEL_CALLS)
     dataset = dataset.map(train_data_augmentation, num_parallel_calls=PARALLEL_CALLS)
     dataset = dataset.batch(mb_size)
     dataset = dataset.prefetch(HOW_MANY_PREFETCH)
     return dataset
 
 
-def build_evaluate_input_pipeline(images_labels_files, for_validation=False):
+def build_evaluate_input_pipeline(images_labels_files, for_validation=False, size_adjustment=False):
     # TODO I/O interleaving?
     dataset = tf.data.Dataset.from_tensor_slices(images_labels_files)
     dataset = dataset.shuffle(len(images_labels_files))
     if for_validation:
-        dataset = dataset.map(load_validation_data, num_parallel_calls=PARALLEL_CALLS)
+        dataset = dataset.map(load_validation_data(size_adjustment), num_parallel_calls=PARALLEL_CALLS)
         dataset = dataset.map(validation_data_augmentation, num_parallel_calls=PARALLEL_CALLS)
     else:
         dataset = dataset.map(load_evaluation_data, num_parallel_calls=PARALLEL_CALLS)
@@ -30,38 +30,47 @@ def build_evaluate_input_pipeline(images_labels_files, for_validation=False):
     return dataset
 
 
-def load_train_data(image_label_file):
-    image_string = tf.read_file(image_label_file[0])
-    label_string = tf.read_file(image_label_file[1])
+# helper method
+def image_rescale(img, lbl):
+    shape = tf.cast(tf.shape(img), tf.float64)
+    min_edge = tf.minimum(shape[0], shape[1])
+    ratio = TRAIN_IMG_EDGE_SIZE / min_edge
+    new_height = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[0] * ratio, tf.int32))
+    new_width = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[1] * ratio, tf.int32))
+    new_size = [new_height, new_width]
+    img = tf.image.resize_images(img, new_size, method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
+    lbl = tf.image.resize_images(lbl, new_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+    return tf.cast(img, tf.uint8), lbl
 
-    # Don't use tf.image.decode_image, or the output shape will be undefined
-    image = tf.image.decode_jpeg(image_string, channels=IMAGE_CHANNELS, ratio=1)
-    label = tf.image.decode_png(label_string, channels=LABEL_CHANNELS)
 
-    def scale_up(img, lbl, min_edge_val):
-        shape = tf.cast(tf.shape(img), tf.float64)
-        ratio = TRAIN_IMG_EDGE_SIZE / min_edge_val
-        new_height = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[0] * ratio, tf.int32))
-        new_width = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[1] * ratio, tf.int32))
-        new_size = [new_height, new_width]
-        img = tf.image.resize_images(img, new_size, method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
-        lbl = tf.image.resize_images(lbl, new_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
-        return tf.cast(img, tf.uint8), lbl
+def load_train_data(size_adjustment):
+    def impl(image_label_file):
+        image_string = tf.read_file(image_label_file[0])
+        label_string = tf.read_file(image_label_file[1])
 
-    min_edge = tf.minimum(tf.shape(image)[0], tf.shape(image)[1])
-    image, label = tf.cond(min_edge < TRAIN_IMG_EDGE_SIZE,
-                           lambda: scale_up(image, label, min_edge),
-                           lambda: (image, label))
+        # Don't use tf.image.decode_image, or the output shape will be undefined
+        image = tf.image.decode_jpeg(image_string, channels=IMAGE_CHANNELS, ratio=1)
+        label = tf.image.decode_png(label_string, channels=LABEL_CHANNELS)
 
-    image_label = tf.concat([image, label], axis=2)
-    image_label = tf.random_crop(image_label,
-                                 [TRAIN_IMG_EDGE_SIZE, TRAIN_IMG_EDGE_SIZE, IMAGE_CHANNELS + LABEL_CHANNELS])
-    image, label = tf.split(image_label, [IMAGE_CHANNELS, LABEL_CHANNELS], axis=2)
+        if size_adjustment:
+            image, label = image_rescale(image, label)
+        else:
+            shape = tf.shape(image)
+            min_edge = tf.minimum(shape[0], shape[1])
+            image, label = tf.cond(min_edge < TRAIN_IMG_EDGE_SIZE,
+                                   lambda: image_rescale(image, label),
+                                   lambda: (image, label))
 
-    # This will convert to float values in [0, 1]
-    image = tf.image.convert_image_dtype(image, tf.float32)
+        image_label = tf.concat([image, label], axis=2)
+        image_label = tf.random_crop(image_label,
+                                     [TRAIN_IMG_EDGE_SIZE, TRAIN_IMG_EDGE_SIZE, IMAGE_CHANNELS + LABEL_CHANNELS])
+        image, label = tf.split(image_label, [IMAGE_CHANNELS, LABEL_CHANNELS], axis=2)
 
-    return image, label
+        # This will convert to float values in [0, 1]
+        image = tf.image.convert_image_dtype(image, tf.float32)
+
+        return image, label
+    return impl
 
 
 def train_data_augmentation(image, label):
@@ -74,9 +83,11 @@ def train_data_augmentation(image, label):
     return image, label
 
 
-def validation_data_augmentation(image, label):
+def validation_data_augmentation(image, label, shape, orig_img, orig_lbl):
     image2, label2 = flip_left_right(image), flip_left_right(label)
-    return [(image, label), (image2, label2)]
+    orig_img2, orig_lbl2 = flip_left_right(orig_img), flip_left_right(orig_lbl)
+    return [(image, label, shape, orig_img, orig_lbl),
+            (image2, label2, shape, orig_img2, orig_lbl2)]
 
 
 def flip_left_right(image):
@@ -84,15 +95,21 @@ def flip_left_right(image):
     return tf.reverse(image, axis=[1])  # reverse columns
 
 
-def load_validation_data(image_label_file):
-    image_string = tf.read_file(image_label_file[0])
-    image = tf.image.decode_jpeg(image_string, channels=IMAGE_CHANNELS, ratio=1)
-    image = tf.image.convert_image_dtype(image, tf.float32)
+def load_validation_data(size_adjustment):
+    def impl(image_label_file):
+        image_string = tf.read_file(image_label_file[0])
+        image = tf.image.decode_jpeg(image_string, channels=IMAGE_CHANNELS, ratio=1)
+        orig_image = image = tf.image.convert_image_dtype(image, tf.float32)
+        shape = tf.shape(image)
 
-    label_string = tf.read_file(image_label_file[1])
-    label = tf.image.decode_png(label_string, channels=LABEL_CHANNELS)
+        label_string = tf.read_file(image_label_file[1])
+        orig_label = label = tf.image.decode_png(label_string, channels=LABEL_CHANNELS)
 
-    return image, label
+        if size_adjustment:
+            image, label = image_rescale(image, label)
+
+        return image, label, shape, orig_image, orig_label
+    return impl
 
 
 def load_evaluation_data(image_file):

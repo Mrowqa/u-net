@@ -52,6 +52,13 @@ class UNet:
             self.step_accuracy = tf.reduce_mean(tf.cast(tf.equal(self.y_target, self.preds), tf.float32))
             self.read_overall_accuracy, self.update_overall_accuracy = tf.metrics.mean(self.step_accuracy)
 
+        with tf.name_scope('rescaling_helper'):
+            self.label_input = tf.placeholder(tf.uint8, [1, None, None, LABEL_CHANNELS])
+            self.label_target_shape = tf.placeholder(tf.int32, [2])
+            self.rescaled_label = tf.image.resize_images(self.label_input, self.label_target_shape,
+                                                         method=tf.image.ResizeMethod.NEAREST_NEIGHBOR,
+                                                         align_corners=True)
+
         with tf.name_scope('summaries'):
             sloss = tf.summary.scalar('loss', self.loss)
             sacc = tf.summary.scalar('accuracy', self.step_accuracy)
@@ -73,13 +80,13 @@ class UNet:
                     self.train_step = tf.train.AdamOptimizer(1e-4).minimize(self.loss)
         log.debug('List of variables: {}'.format(list(map(lambda x: x.name, tf.global_variables()))))
 
-    def train(self, dataset, mb_size, save_config=None):
+    def train(self, dataset, mb_size, save_config=None, size_adjustment=False):
         assert self.training
         log.info('Training.')
 
         train_files = tvs.build_full_paths(dataset, "train")  # [:10]  # TODO hack
         with tf.device('/cpu:0'):
-            ds = dp.build_train_input_pipeline(train_files, mb_size)
+            ds = dp.build_train_input_pipeline(train_files, mb_size, size_adjustment)
             next_batch = ds.make_one_shot_iterator().get_next()
         saver = tf.train.Saver()
 
@@ -118,13 +125,13 @@ class UNet:
             else:
                 log.info("Save directory for the model was not specified.")
 
-    def validate(self, dataset, saved_model_weights):
+    def validate(self, dataset, saved_model_weights, size_adjustment=False):
         # assert not self.training
         log.info('Validating.')
 
         valid_files = tvs.build_full_paths(dataset, "valid")[:100]  # [:10]  # TODO hack
         with tf.device('/cpu:0'):
-            ds = dp.build_evaluate_input_pipeline(valid_files, for_validation=True)
+            ds = dp.build_evaluate_input_pipeline(valid_files, for_validation=True, size_adjustment=size_adjustment)
             next_batch = ds.make_one_shot_iterator().get_next()
         saver = tf.train.Saver()
 
@@ -139,7 +146,7 @@ class UNet:
             try:
                 for i in itertools.count(start=1):
                     case_list = self.sess.run(next_batch)
-                    for j, (img, lbl) in enumerate(case_list):
+                    for j, (img, lbl, orig_shape, orig_img, orig_lbl) in enumerate(case_list):  # veeeeery inefficient
                         step = i + (j / len(case_list))
                         img_chks, lbl_chks = dp.split_into_chunks(img), dp.split_into_chunks(lbl)
                         log.debug("Step {} | Shape: {} split into {} chunks.".format(step, img.shape, len(img_chks)))
@@ -153,13 +160,17 @@ class UNet:
                             all_preds.append(pred)
                         overall_pred = dp.merge_chunks(all_preds, lbl.shape)
                         loss = np.mean(losses)
+                        if size_adjustment:
+                            overall_pred = self.sess.run(self.rescaled_label,
+                                                         feed_dict={self.label_input: overall_pred,
+                                                                    self.label_target_shape: orig_shape[0, :2]})
                         acc, acc2, summaries, img_summaries = \
                             self.sess.run([self.update_overall_accuracy, self.step_accuracy,
                                            self.loss_acc_summaries, self.images_summaries],
-                                          feed_dict={self.x: img,
+                                          feed_dict={self.x: orig_img,
                                                      self.preds: overall_pred,
                                                      self.loss: loss,
-                                                     self.y_target: lbl})
+                                                     self.y_target: orig_lbl})
                         log.debug("Loss: {}, Mov mean acc: {}, Step acc: {}".format(loss, acc, acc2))
                         s_writer.add_summary(summaries, step)
                         if i % 20 == 0:  # TODO shouldn't output a lot of images!
