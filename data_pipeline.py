@@ -32,6 +32,7 @@ def build_evaluate_input_pipeline(images_labels_files, for_validation=False, siz
 
 # helper method
 def image_rescale(img, lbl):
+    img_dtype = img.dtype
     shape = tf.cast(tf.shape(img), tf.float64)
     min_edge = tf.minimum(shape[0], shape[1])
     ratio = TRAIN_IMG_EDGE_SIZE / min_edge
@@ -40,7 +41,7 @@ def image_rescale(img, lbl):
     new_size = [new_height, new_width]
     img = tf.image.resize_images(img, new_size, method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
     lbl = tf.image.resize_images(lbl, new_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
-    return tf.cast(img, tf.uint8), lbl
+    return tf.cast(img, img_dtype), lbl
 
 
 def load_train_data(size_adjustment):
