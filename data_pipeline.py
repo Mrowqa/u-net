@@ -9,8 +9,8 @@ def build_train_input_pipeline(images_labels_files, mb_size, size_adjustment=Fal
     # TODO I/O interleaving?
     dataset = tf.data.Dataset.from_tensor_slices(images_labels_files)
     dataset = dataset.shuffle(len(images_labels_files))
-    dataset = dataset.map(load_train_data(size_adjustment), num_parallel_calls=PARALLEL_CALLS)
-    dataset = dataset.map(train_data_augmentation, num_parallel_calls=PARALLEL_CALLS)
+    dataset = dataset.map(load_train_data(size_adjustment, True), num_parallel_calls=PARALLEL_CALLS)
+    # dataset = dataset.map(train_data_augmentation, num_parallel_calls=PARALLEL_CALLS)  # moved!
     dataset = dataset.batch(mb_size)
     dataset = dataset.prefetch(HOW_MANY_PREFETCH)
     return dataset
@@ -35,7 +35,7 @@ def image_rescale(img, lbl):
     img_dtype = img.dtype
     shape = tf.cast(tf.shape(img), tf.float64)
     min_edge = tf.minimum(shape[0], shape[1])
-    ratio = TRAIN_IMG_EDGE_SIZE / min_edge
+    ratio = TRAIN_IMG_EDGE_SIZE / min_edge * OVERSIZE_FACTOR
     new_height = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[0] * ratio, tf.int32))
     new_width = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[1] * ratio, tf.int32))
     new_size = [new_height, new_width]
@@ -44,7 +44,14 @@ def image_rescale(img, lbl):
     return tf.cast(img, img_dtype), lbl
 
 
-def load_train_data(size_adjustment):
+def central_crop(img):
+    sh = tf.shape(img)
+    y = tf.cast((sh[0] - TRAIN_IMG_EDGE_SIZE) / 2, tf.int32)
+    x = tf.cast((sh[1] - TRAIN_IMG_EDGE_SIZE) / 2, tf.int32)
+    return img[y:y+TRAIN_IMG_EDGE_SIZE, x:x+TRAIN_IMG_EDGE_SIZE, :]
+
+
+def load_train_data(size_adjustment, data_augmentation):
     def impl(image_label_file):
         image_string = tf.read_file(image_label_file[0])
         label_string = tf.read_file(image_label_file[1])
@@ -62,13 +69,17 @@ def load_train_data(size_adjustment):
                                    lambda: image_rescale(image, label),
                                    lambda: (image, label))
 
+        if data_augmentation:
+            image, label = train_data_augmentation(image, label)
+
         image_label = tf.concat([image, label], axis=2)
-        image_label = tf.random_crop(image_label,
-                                     [TRAIN_IMG_EDGE_SIZE, TRAIN_IMG_EDGE_SIZE, IMAGE_CHANNELS + LABEL_CHANNELS])
+        #image_label = tf.random_crop(image_label,
+        #                             [TRAIN_IMG_EDGE_SIZE, TRAIN_IMG_EDGE_SIZE, IMAGE_CHANNELS + LABEL_CHANNELS])
+        image_label = central_crop(image_label)  # because of rotation!
         image, label = tf.split(image_label, [IMAGE_CHANNELS, LABEL_CHANNELS], axis=2)
 
         # This will convert to float values in [0, 1]
-        image = tf.image.convert_image_dtype(image, tf.float32)
+        image = tf.image.convert_image_dtype(image, tf.float32)  # TODO apply before rescaling, rotation, etc; problem: same random crop as for image
 
         return image, label
     return impl
@@ -80,13 +91,17 @@ def train_data_augmentation(image, label):
                            lambda: (flip_left_right(image), flip_left_right(label)),
                            lambda: (image, label))
     # TODO scaling
-    # TODO rotation
-    return image, label
+    img_dtype = image.dtype
+    rads = tf.random_uniform([], -MAX_ROT_IN_RAD, MAX_ROT_IN_RAD)  # TODO random_normal ??
+    image = tf.contrib.image.rotate(image, rads, interpolation='BILINEAR')
+    label = tf.contrib.image.rotate(label, rads, interpolation='NEAREST')
+    return tf.cast(image, img_dtype), label
 
 
 def validation_data_augmentation(image, label, shape, orig_img, orig_lbl):
     image2, label2 = flip_left_right(image), flip_left_right(label)
     orig_img2, orig_lbl2 = flip_left_right(orig_img), flip_left_right(orig_lbl)
+    # TODO add rotations? nope, cause of padding? :/
     return [(image, label, shape, orig_img, orig_lbl),
             (image2, label2, shape, orig_img2, orig_lbl2)]
 
