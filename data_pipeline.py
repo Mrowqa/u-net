@@ -73,9 +73,11 @@ def load_train_data(size_adjustment, data_augmentation):
             image, label = train_data_augmentation(image, label)
 
         image_label = tf.concat([image, label], axis=2)
-        #image_label = tf.random_crop(image_label,
-        #                             [TRAIN_IMG_EDGE_SIZE, TRAIN_IMG_EDGE_SIZE, IMAGE_CHANNELS + LABEL_CHANNELS])
-        image_label = central_crop(image_label)  # because of rotation!
+        if ENABLE_ROTATING_AUG:
+            image_label = central_crop(image_label)  # because of rotation and padding!
+        else:
+            image_label = tf.random_crop(image_label,
+                                         [TRAIN_IMG_EDGE_SIZE, TRAIN_IMG_EDGE_SIZE, IMAGE_CHANNELS + LABEL_CHANNELS])
         image, label = tf.split(image_label, [IMAGE_CHANNELS, LABEL_CHANNELS], axis=2)
 
         # This will convert to float values in [0, 1]
@@ -92,9 +94,10 @@ def train_data_augmentation(image, label):
                            lambda: (image, label))
     # TODO scaling
     img_dtype = image.dtype
-    rads = tf.random_uniform([], -MAX_ROT_IN_RAD, MAX_ROT_IN_RAD)  # TODO random_normal ??
-    image = tf.contrib.image.rotate(image, rads, interpolation='BILINEAR')
-    label = tf.contrib.image.rotate(label, rads, interpolation='NEAREST')
+    if ENABLE_ROTATING_AUG:
+        rads = tf.random_uniform([], -MAX_ROT_IN_RAD, MAX_ROT_IN_RAD)  # TODO random_normal ??
+        image = tf.contrib.image.rotate(image, rads, interpolation='BILINEAR')
+        label = tf.contrib.image.rotate(label, rads, interpolation='NEAREST')
     return tf.cast(image, img_dtype), label
 
 

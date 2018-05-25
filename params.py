@@ -9,7 +9,8 @@ TRAIN_IMG_EDGE_SIZE = 1536  # 2048  # test it
 # 2048  -- 0.9945694534866898
 EVAL_IMG_SIZE = (1536, 2048)  # (2448, 3264) # (1250, 1650) #(1080, 1920)  # height x width  # better way: something 3:4
 EVAL_MARGIN = 140  # 1 +4)*2 +4)*2 ... +4)*2
-MAX_ROT_IN_RAD = 0.5  # around [-30, 30] degrees
+ENABLE_ROTATING_AUG = True
+MAX_ROT_IN_RAD = 0.25  # around [-15, 15] degrees
 OVERSIZE_FACTOR = 1.2  # related to rotation and cropping
 IMAGE_CHANNELS = 3
 LABEL_CHANNELS = 1
