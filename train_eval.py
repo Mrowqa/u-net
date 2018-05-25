@@ -25,7 +25,7 @@ def train_validate():
     data_split = 'data-split.json'
     data_split_part = 0
 
-    unet = m.create_model(model_name, channels_sf, training=True)
+    unet = m.create_model(model_name, channels_sf, training=True, use_dilated=True)
     dataset = tvs.select_part_for_training(tvs.load_from_file(data_split), data_split_part)
     for i in range(epochs):
         log.info('------- Training: NEW EPOCH #{} (of {}) ---------'.format(i+1, epochs))

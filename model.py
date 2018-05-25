@@ -31,9 +31,8 @@ class UNet:
                                                 training=training)
 
             with tf.name_scope('preparing_readout'):
-                signal = Conv2D(3, CATEGORIES_CNT, False).route_signal(signal=signal,
-                                                                       var_name='W_out',
-                                                                       training=training)
+                signal = Conv2D(3, CATEGORIES_CNT, add_relu=False).route_signal(
+                    signal=signal, var_name='W_out', training=training)
 
         with tf.name_scope('prediction'):
             self.probs = tf.nn.softmax(signal)
@@ -226,15 +225,18 @@ class Layer:
 
 
 class Conv2D(Layer):
-    def __init__(self, patch_edge, channels_out, add_relu=True):
+    def __init__(self, patch_edge, channels_out, dilation=1, add_relu=True):
         self.patch_edge = patch_edge
         self.channels_out = channels_out
+        self.dilation = dilation
         self.add_relu = add_relu
 
     def route_signal(self, signal, var_name, training):
-        channels_in = signal.shape[3]
+        channels_in = signal.real_shape_before_concat[3]*2 if hasattr(signal, 'real_shape_before_concat') \
+            else signal.shape[3]  # hacking tensorflow :(
+        dilations = [1, self.dilation, self.dilation, 1]
         weights = weight_variable(var_name, [self.patch_edge, self.patch_edge, channels_in, self.channels_out])
-        signal = tf.nn.conv2d(signal, weights, strides=[1, 1, 1, 1], padding="SAME")
+        signal = tf.nn.conv2d(signal, weights, strides=[1, 1, 1, 1], dilations=dilations, padding="SAME")
         signal = tf.layers.batch_normalization(signal, momentum=0.9, training=training)
         if self.add_relu:
             signal = tf.nn.relu(signal)
@@ -258,6 +260,24 @@ class Deconv2D_Then_Concat(Layer):
         return signal
 
 
+# Some shapes doesn't work :(
+# class DilatedDeconv2D_Then_Concat(Layer):
+#     def __init__(self, rate, channels_out, stack):
+#         self.rate = rate
+#         self.channels_out = channels_out
+#         self.stack = stack
+#
+#     def route_signal(self, signal, var_name, **_kwargs):
+#         prev_signal = self.stack.pop()
+#         channels_in = signal.shape[3]
+#         weights = weight_variable(var_name, [2, 2, self.channels_out, channels_in])
+#         signal = tf.nn.atrous_conv2d_transpose(
+#             signal, weights, output_shape=tf.shape(prev_signal), rate=2, padding="SAME")
+#         signal = tf.concat([signal, prev_signal], axis=3)
+#         signal.real_shape_before_concat = prev_signal.shape  # hacking tensorflow :(
+#         return signal
+
+
 class Push_Then_MaxPool(Layer):
     def __init__(self, patch_edge, stack):
         self.patch_edge = patch_edge
@@ -275,24 +295,30 @@ def weight_variable(name, shape):
 
 
 # ------------------------- exec stuff ----------------
-def create_model(name, sf=1, reuse_vars=False, training=False):
+def create_model(name, sf=1, reuse_vars=False, training=False, use_dilated=False):
     stack = []
 
-    def double_conv(channels):
-        return [
-            Conv2D(3, channels),
-            Conv2D(3, channels),
-        ]
+    def double_conv(channels, way_down=None):
+        if use_dilated and way_down is not None:
+            return [
+                Conv2D(3, channels, 1 if way_down else 2),
+                Conv2D(3, channels, 2 if way_down else 1),
+            ]
+        else:
+            return [
+                Conv2D(3, channels),
+                Conv2D(3, channels),
+            ]
 
     def block_down(channels):
-        return double_conv(channels) + [
+        return double_conv(channels, True) + [
             Push_Then_MaxPool(2, stack),
         ]
 
     def block_up(channels):
         return [
             Deconv2D_Then_Concat(2, channels, stack),
-        ] + double_conv(channels)
+        ] + double_conv(channels, False)
 
     layers = [
         block_down(16*sf),
