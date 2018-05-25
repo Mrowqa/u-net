@@ -234,9 +234,11 @@ class Conv2D(Layer):
     def route_signal(self, signal, var_name, training):
         channels_in = signal.real_shape_before_concat[3]*2 if hasattr(signal, 'real_shape_before_concat') \
             else signal.shape[3]  # hacking tensorflow :(
-        dilations = [1, self.dilation, self.dilation, 1]
         weights = weight_variable(var_name, [self.patch_edge, self.patch_edge, channels_in, self.channels_out])
-        signal = tf.nn.conv2d(signal, weights, strides=[1, 1, 1, 1], dilations=dilations, padding="SAME")
+        if self.dilation > 1:  # tf 1.4 (ICM cuda8) doesn't support dilations in tf.nn.conv2d
+            signal = tf.nn.atrous_conv2d(signal, weights, rate=self.dilation, padding="SAME")
+        else:
+            signal = tf.nn.conv2d(signal, weights, strides=[1, 1, 1, 1], padding="SAME")
         signal = tf.layers.batch_normalization(signal, momentum=0.9, training=training)
         if self.add_relu:
             signal = tf.nn.relu(signal)
