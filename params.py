@@ -13,6 +13,7 @@ EVAL_MARGIN = 140  # 1 +4)*2 +4)*2 ... +4)*2
 ENABLE_ROTATING_AUG = True
 MAX_ROT_IN_RAD = 0.25  # around [-15, 15] degrees
 OVERSIZE_FACTOR = 1.2  # related to rotation and cropping
+ENABLE_RANDOM_BRIGHTNESS = True
 IMAGE_CHANNELS = 3
 LABEL_CHANNELS = 1
 CATEGORIES_CNT = 66

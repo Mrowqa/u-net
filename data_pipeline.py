@@ -82,6 +82,8 @@ def load_train_data(size_adjustment, data_augmentation):
 
         # This will convert to float values in [0, 1]
         image = tf.image.convert_image_dtype(image, tf.float32)  # TODO apply before rescaling, rotation, etc; problem: same random crop as for image
+        if data_augmentation and ENABLE_RANDOM_BRIGHTNESS:  # not sure how to put it in train_data_augmentation, so next hack is to put it here ;)
+            image = random_brightness(image)
 
         return image, label
     return impl
@@ -107,6 +109,15 @@ def validation_data_augmentation(image, label, shape, orig_img, orig_lbl):
     # TODO add rotations? nope, cause of padding? :/
     return [(image, label, shape, orig_img, orig_lbl),
             (image2, label2, shape, orig_img2, orig_lbl2)]
+
+
+def random_brightness(image):
+    # merged ideas from tensorflow and pytorch
+    a = tf.random_uniform([], -0.2, 0.2)
+    b = tf.random_uniform([], 0.7, 1.5)
+    image = image * b + a
+    image = tf.clip_by_value(image, 0., 1.)
+    return image
 
 
 def flip_left_right(image):
