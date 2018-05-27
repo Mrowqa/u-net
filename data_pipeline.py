@@ -186,8 +186,8 @@ def split_into_chunks(image):
     return slices
 
 
-def merge_chunks(chunks, shape):
-    image = np.zeros(shape, dtype=np.uint8)
+def merge_chunks(chunks, shape, dtype=np.uint8):
+    image = np.zeros(shape, dtype=dtype)
     hi, wi = shape[1:3]
     hw, ww = EVAL_IMG_SIZE
 

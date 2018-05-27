@@ -219,7 +219,7 @@ class UNet:
                             prob = self.sess.run(self.probs, feed_dict={self.x: chimg})
                             all_probs.append(prob)
                         lbl_shape = [*im.shape[:3], CATEGORIES_CNT]
-                        overall_probs.append(dp.merge_chunks(all_probs, lbl_shape))
+                        overall_probs.append(dp.merge_chunks(all_probs, lbl_shape, dtype=np.float32))
                     overall_probs = dp.reduce_flipped(overall_probs)
                     overall_pred = dp.probs2pred(overall_probs)
                     if size_adjustment:
