@@ -46,15 +46,24 @@ def train_validate():
 
 
 def evaluate():
-    channels_sf = 1  #2
-    model_name = "test"
-    model_load = 'm2-emergency'
-    data_dir = 'D:/students/dnn/assignment2/test/images'
+    channels_sf = 2
+    model_name = "put / here ! sth"
+    model_load = "<SOME_PATH>"
+    data_split = 'data-split.json'
+    test_data_dir = 'D:/students/dnn/assignment2/test/images'
+    data_split_part = 0
 
-    unet = m.create_model(model_name, channels_sf)
-    dataset = tvs.get_evaluation_set(data_dir)
-    log.info('------- Evaluation ({} images) ---------'.format(len(dataset)))
-    unet.evaluate(dataset, 'models/{}.ckpt'.format(model_load))
+    unet = m.create_model(model_name, channels_sf, training=False, use_dilated=True)
+    train_dataset = tvs.select_part_for_training(tvs.load_from_file(data_split), data_split_part)
+    test_dataset = tvs.get_evaluation_set(test_data_dir)
+    queue = [
+        (tvs.get_evalution_from_validation(train_dataset, "small_valid"), "small_valid"),
+        (test_dataset, "[con]test"),
+        (tvs.get_evalution_from_validation(train_dataset, "valid"), "valid"),
+    ]
+    for dataset, name in queue:
+        log.info('------- Evaluation "{}" ({} images) ---------'.format(name, len(dataset)))
+        unet.evaluate(dataset, 'models/{}.ckpt'.format(model_load), test_dataset=name, size_adjustment=True)
 
 
 if __name__ == '__main__':

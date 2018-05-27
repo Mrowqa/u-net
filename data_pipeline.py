@@ -24,7 +24,8 @@ def build_evaluate_input_pipeline(images_labels_files, for_validation=False, siz
         dataset = dataset.map(load_validation_data(size_adjustment), num_parallel_calls=PARALLEL_CALLS)
         dataset = dataset.map(validation_data_augmentation, num_parallel_calls=PARALLEL_CALLS)
     else:
-        dataset = dataset.map(load_evaluation_data, num_parallel_calls=PARALLEL_CALLS)
+        dataset = dataset.map(load_evaluation_data(size_adjustment), num_parallel_calls=PARALLEL_CALLS)
+        dataset = dataset.map(evaluation_data_augmentation, num_parallel_calls=PARALLEL_CALLS)
     dataset = dataset.batch(1)
     dataset = dataset.prefetch(HOW_MANY_PREFETCH)
     return dataset
@@ -120,9 +121,9 @@ def random_brightness(image):
     return image
 
 
-def flip_left_right(image):
+def flip_left_right(image, in_batch=False):
     # image is [height x width x channels]
-    return tf.reverse(image, axis=[1])  # reverse columns
+    return tf.reverse(image, axis=[2 if in_batch else 1])  # reverse columns
 
 
 def load_validation_data(size_adjustment):
@@ -142,14 +143,25 @@ def load_validation_data(size_adjustment):
     return impl
 
 
-def load_evaluation_data(image_file):
-    image_string = tf.read_file(image_file[0])
-    image = tf.image.decode_jpeg(image_string, channels=IMAGE_CHANNELS, ratio=1)
-    image = tf.image.convert_image_dtype(image, tf.float32)
+def load_evaluation_data(size_adjustment):
+    def impl(image_file):
+        image_string = tf.read_file(image_file[0])
+        image = tf.image.decode_jpeg(image_string, channels=IMAGE_CHANNELS, ratio=1)
+        image = tf.image.convert_image_dtype(image, tf.float32)
+        shape = tf.shape(image)
 
-    basename = image_file[1]
+        basename = image_file[1]
 
-    return image, basename
+        if size_adjustment:
+            image, _ = image_rescale(image, None)
+
+        return image, basename, shape
+    return impl
+
+
+def evaluation_data_augmentation(image, basename, shape):
+    image2 = flip_left_right(image)
+    return image, image2, basename, shape
 
 
 def encode_and_save_to_file(filename, preds):
@@ -186,6 +198,15 @@ def merge_chunks(chunks, shape):
             ch = next(ch_it)
             image[:, row:row+hw, col:col+ww] = ch[:, r1:r1+hw, c1:c1+ww]
     return image
+
+
+def reduce_flipped(imgs):
+    img, img2 = imgs
+    return (img + img2) / 2
+
+
+def probs2pred(probs):
+    return np.expand_dims(np.uint8(np.argmax(probs, axis=3)), axis=-1)
 
 
 def color_labels(labels):

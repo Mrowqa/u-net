@@ -30,7 +30,12 @@ def create_split_from_directory(data_dir, parts_cnt, small_valid_size=0):
 
 def get_evaluation_set(data_dir):
     paths = glob.glob(os.path.join(data_dir, '*'))
-    return list([(p, os.path.split(p)[-1]) for p in paths])
+    return list([(p, os.path.split(p)[-1][:-4]) for p in paths])
+
+
+def get_evalution_from_validation(dataset, subset):
+    paths = build_full_paths(dataset, subset)
+    return list([(p, os.path.split(p)[-1][:-4]) for p, _ in paths])
 
 
 def select_part_for_training(dataset, part_no):

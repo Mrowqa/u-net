@@ -36,6 +36,11 @@ class UNet:
 
         with tf.name_scope('prediction'):
             self.probs = tf.nn.softmax(signal)
+            # self.probs1 = self.probs
+            # if not training:
+            #     self.probs_flipped = tf.placeholder(tf.float32, [None, None, None, CATEGORIES_CNT])
+            #     probs2 = dp.flip_left_right(self.probs_flipped, in_batch=True)
+            #     self.probs = (self.probs + probs2) / 2
             self.preds = tf.cast(tf.argmax(self.probs, axis=3), tf.uint8)
             self.preds = tf.expand_dims(self.preds, -1)
 
@@ -58,19 +63,20 @@ class UNet:
                                                          method=tf.image.ResizeMethod.NEAREST_NEIGHBOR,
                                                          align_corners=True)
 
-        with tf.name_scope('summaries'):
-            sloss = tf.summary.scalar('loss', self.loss)
-            sacc = tf.summary.scalar('accuracy', self.step_accuracy)
-            sacc2 = tf.summary.scalar('moving_mean_accuracy', self.read_overall_accuracy)
-            self.loss_acc_summaries = tf.summary.merge([sloss, sacc, sacc2])
+        if training:
+            with tf.name_scope('summaries'):
+                sloss = tf.summary.scalar('loss', self.loss)
+                sacc = tf.summary.scalar('accuracy', self.step_accuracy)
+                sacc2 = tf.summary.scalar('moving_mean_accuracy', self.read_overall_accuracy)
+                self.loss_acc_summaries = tf.summary.merge([sloss, sacc, sacc2])
 
-            zero = np.array([[[[0, 0, 0]]]], dtype=np.uint8)
-            self.y_target_color = tf.placeholder_with_default(zero, [None, None, None, IMAGE_CHANNELS])
-            self.preds_color = tf.placeholder_with_default(zero, [None, None, None, IMAGE_CHANNELS])
-            simg = tf.summary.image('image', self.x)
-            strg = tf.summary.image('target', self.y_target_color)
-            sprd = tf.summary.image('prediction', self.preds_color)
-            self.images_summaries = tf.summary.merge([simg, strg, sprd])
+                zero = np.array([[[[0, 0, 0]]]], dtype=np.uint8)
+                self.y_target_color = tf.placeholder_with_default(zero, [None, None, None, IMAGE_CHANNELS])
+                self.preds_color = tf.placeholder_with_default(zero, [None, None, None, IMAGE_CHANNELS])
+                simg = tf.summary.image('image', self.x)
+                strg = tf.summary.image('target', self.y_target_color)
+                sprd = tf.summary.image('prediction', self.preds_color)
+                self.images_summaries = tf.summary.merge([simg, strg, sprd])
 
         with tf.name_scope('training_step'):
             if training:
@@ -183,17 +189,17 @@ class UNet:
             except tf.errors.OutOfRangeError:
                 pass
 
-    def evaluate(self, dataset, saved_model_weights):
+    def evaluate(self, eval_files, saved_model_weights, dataset_name="unknown", size_adjustment=False):
         assert not self.training
         log.info('Evaluating.')
 
-        eval_files = dataset[:10]  # TODO hack
+        eval_files = eval_files  # [:10]  # TODO hack
         with tf.device('/cpu:0'):
-            ds = dp.build_evaluate_input_pipeline(eval_files)
+            ds = dp.build_evaluate_input_pipeline(eval_files, size_adjustment=size_adjustment)
             next_batch = ds.make_one_shot_iterator().get_next()
         saver = tf.train.Saver()
 
-        output_dir = os.path.join(EVAL_OUTPUT_DIR, self.name + '-' + file_formatted_now() + '/')
+        output_dir = os.path.join(EVAL_OUTPUT_DIR, self.name + '-' + dataset_name + '-' + file_formatted_now() + '/')
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         with tf.Session(config=config) as self.sess:
@@ -202,17 +208,25 @@ class UNet:
             log.info("Weights restored from {}.".format(saved_model_weights))
             try:
                 for i in itertools.count(start=1):
-                    img, basename = self.sess.run(next_batch)
+                    img, img2, basename, orig_shape = self.sess.run(next_batch)
                     basename = basename[0].decode()  # unpack the batch
-                    img_chks = dp.split_into_chunks(img)
-                    log.debug("Step {} | Shape: {} split into {} chunks.".format(i, img.shape, len(img_chks)))
-                    all_preds = []
-                    for chimg in img_chks:
-                        pred = self.sess.run(self.preds, feed_dict={self.x: chimg})
-                        all_preds.append(pred)
-                    lbl_shape = [*img.shape[:3], LABEL_CHANNELS]
-                    overall_pred = dp.merge_chunks(all_preds, lbl_shape)
-                    output_filename = os.path.join(output_dir, basename + '-out.png')
+                    overall_probs = []
+                    for im in [img, img2]:
+                        img_chks = dp.split_into_chunks(im)
+                        log.debug("Step {} | Shape: {} split into {} chunks.".format(i, im.shape, len(img_chks)))
+                        all_probs = []
+                        for chimg in img_chks:
+                            prob = self.sess.run(self.probs, feed_dict={self.x: chimg})
+                            all_probs.append(prob)
+                        lbl_shape = [*im.shape[:3], CATEGORIES_CNT]
+                        overall_probs.append(dp.merge_chunks(all_probs, lbl_shape))
+                    overall_probs = dp.reduce_flipped(overall_probs)
+                    overall_pred = dp.probs2pred(overall_probs)
+                    if size_adjustment:
+                        overall_pred = self.sess.run(self.rescaled_label,
+                                                     feed_dict={self.label_input: overall_pred,
+                                                                self.label_target_shape: orig_shape[0, :2]})
+                    output_filename = os.path.join(output_dir, basename + '.png')
                     log.debug("Saving to file {}.".format(output_filename))
                     self.sess.run(self.save_preds_to_file, feed_dict={self.preds: overall_pred,
                                                                       self.filename: output_filename})
