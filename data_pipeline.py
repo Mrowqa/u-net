@@ -41,7 +41,8 @@ def image_rescale(img, lbl):
     new_width = tf.maximum(TRAIN_IMG_EDGE_SIZE, tf.cast(shape[1] * ratio, tf.int32))
     new_size = [new_height, new_width]
     img = tf.image.resize_images(img, new_size, method=tf.image.ResizeMethod.BILINEAR, align_corners=True)
-    lbl = tf.image.resize_images(lbl, new_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
+    if lbl is not None:
+        lbl = tf.image.resize_images(lbl, new_size, method=tf.image.ResizeMethod.NEAREST_NEIGHBOR, align_corners=True)
     return tf.cast(img, img_dtype), lbl
 
 
@@ -202,6 +203,7 @@ def merge_chunks(chunks, shape):
 
 def reduce_flipped(imgs):
     img, img2 = imgs
+    img2 = img2[:, :, ::-1]
     return (img + img2) / 2
 
 

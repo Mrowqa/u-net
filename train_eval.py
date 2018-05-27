@@ -46,11 +46,12 @@ def train_validate():
 
 
 def evaluate():
+    assert "Fill in the details!" is False
     channels_sf = 2
-    model_name = "put / here ! sth"
-    model_load = "<SOME_PATH>"
+    model_name = "p6.dilations"
+    model_load = "p6.dilations-e5"
     data_split = 'data-split.json'
-    test_data_dir = 'D:/students/dnn/assignment2/test/images'
+    test_data_dir = '/data/assignment2/test/images'
     data_split_part = 0
 
     unet = m.create_model(model_name, channels_sf, training=False, use_dilated=True)
@@ -58,14 +59,14 @@ def evaluate():
     test_dataset = tvs.get_evaluation_set(test_data_dir)
     queue = [
         (tvs.get_evalution_from_validation(train_dataset, "small_valid"), "small_valid"),
-        (test_dataset, "[con]test"),
+        (test_dataset, "conTEST"),
         (tvs.get_evalution_from_validation(train_dataset, "valid"), "valid"),
     ]
     for dataset, name in queue:
         log.info('------- Evaluation "{}" ({} images) ---------'.format(name, len(dataset)))
-        unet.evaluate(dataset, 'models/{}.ckpt'.format(model_load), test_dataset=name, size_adjustment=True)
+        unet.evaluate(dataset, 'models/{}.ckpt'.format(model_load), dataset_name=name, size_adjustment=True)
 
 
 if __name__ == '__main__':
-    train_validate()
-    # evaluate()
+    # train_validate()
+    evaluate()
