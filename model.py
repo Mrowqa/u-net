@@ -36,11 +36,12 @@ class UNet:
 
         with tf.name_scope('prediction'):
             self.probs = tf.nn.softmax(signal)
-            # self.probs1 = self.probs
-            # if not training:
-            #     self.probs_flipped = tf.placeholder(tf.float32, [None, None, None, CATEGORIES_CNT])
-            #     probs2 = dp.flip_left_right(self.probs_flipped, in_batch=True)
-            #     self.probs = (self.probs + probs2) / 2
+            if not training:
+                self.orig_probs = self.probs
+                self.probs1 = tf.placeholder(tf.float16, [None, None, None, CATEGORIES_CNT])
+                self.probs2 = tf.placeholder(tf.float16, [None, None, None, CATEGORIES_CNT])
+                probs2 = dp.flip_left_right(self.probs2, in_batch=True)
+                self.probs = (self.probs1 + probs2) / 2
             self.preds = tf.cast(tf.argmax(self.probs, axis=3), tf.uint8)
             self.preds = tf.expand_dims(self.preds, -1)
 
@@ -216,12 +217,17 @@ class UNet:
                         log.debug("Step {} | Shape: {} split into {} chunks.".format(i, im.shape, len(img_chks)))
                         all_probs = []
                         for chimg in img_chks:
-                            prob = self.sess.run(self.probs, feed_dict={self.x: chimg})
+                            prob = self.sess.run(self.orig_probs, feed_dict={self.x: chimg})
                             all_probs.append(prob)
                         lbl_shape = [*im.shape[:3], CATEGORIES_CNT]
-                        overall_probs.append(dp.merge_chunks(all_probs, lbl_shape, dtype=np.float32))
-                    overall_probs = dp.reduce_flipped(overall_probs)
-                    overall_pred = dp.probs2pred(overall_probs)
+                        overall_probs.append(dp.merge_chunks(all_probs, lbl_shape, dtype=np.float16))
+                    if False:  # if image is too big, do it on CPU
+                        overall_probs = dp.reduce_flipped(overall_probs)
+                        overall_pred = dp.probs2pred(overall_probs)
+                    else:  # TODO last 3 sess run could be merged... assuming merging preds will not run out of memory
+                        overall_pred = self.sess.run(self.preds,
+                                                     feed_dict={self.probs1: overall_probs[0],
+                                                                self.probs2: overall_probs[1]})
                     if size_adjustment:
                         overall_pred = self.sess.run(self.rescaled_label,
                                                      feed_dict={self.label_input: overall_pred,
