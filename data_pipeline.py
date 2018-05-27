@@ -19,7 +19,7 @@ def build_train_input_pipeline(images_labels_files, mb_size, size_adjustment=Fal
 def build_evaluate_input_pipeline(images_labels_files, for_validation=False, size_adjustment=False):
     # TODO I/O interleaving?
     dataset = tf.data.Dataset.from_tensor_slices(images_labels_files)
-    dataset = dataset.shuffle(len(images_labels_files))
+    #dataset = dataset.shuffle(len(images_labels_files))
     if for_validation:
         dataset = dataset.map(load_validation_data(size_adjustment), num_parallel_calls=PARALLEL_CALLS)
         dataset = dataset.map(validation_data_augmentation, num_parallel_calls=PARALLEL_CALLS)

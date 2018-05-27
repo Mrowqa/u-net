@@ -7,6 +7,7 @@ import itertools
 import logging
 import os
 import numpy as np
+import glob
 
 log = logging.getLogger('model')
 
@@ -211,6 +212,10 @@ class UNet:
                 for i in itertools.count(start=1):
                     img, img2, basename, orig_shape = self.sess.run(next_batch)
                     basename = basename[0].decode()  # unpack the batch
+                    found = glob.glob(os.path.join(EVAL_OUTPUT_DIR, '*'+dataset_name+'*', '*'+basename+'*'))
+                    if found:
+                        log.debug("Step {} | Found existing output (skipping): {}".format(i, found))
+                        continue
                     overall_probs = []
                     for im in [img, img2]:
                         img_chks = dp.split_into_chunks(im)
