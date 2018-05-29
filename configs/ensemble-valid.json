@@ -1,0 +1,12 @@
+{
+  "prefix": "D:/students/dnn/titan-dump/eval_output",
+  "output_dir": "ensemble-valid",
+  "inputs": [
+    "p4.rescale2-valid-*",
+    "p4.rescale_dil-valid-*",
+    "p5.rot_scale-10deg-valid-*",
+    "p5.rot_scale-15deg-valid-*",
+    "p6.dilations-10deg-valid-*",
+    "p6.dilations-valid-*"
+  ]
+}

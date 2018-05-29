@@ -1,0 +1,51 @@
+$ ./check.sh
+/d/students/dnn/titan-dump/eval_output/p4.rescale_dil-small_valid-2018-05-27--20-22-20
+Mean of 180 labels: 0.7565050580356304
+/d/students/dnn/titan-dump/eval_output/p4.rescale_dil-valid-2018-05-28--02-41-19
+Mean of 1782 labels: 0.7679633009387974
+/d/students/dnn/titan-dump/eval_output/p4.rescale2-small_valid-2018-05-28--07-52-55
+Mean of 180 labels: 0.7431257066910438
+/d/students/dnn/titan-dump/eval_output/p4.rescale2-valid-2018-05-28--15-49-50
+Mean of 200 labels: 0.7463931801585642
+/d/students/dnn/titan-dump/eval_output/p5.rot_scale-10deg-small_valid-2018-05-28--00-46-55
+Mean of 180 labels: 0.7373328480656012
+/d/students/dnn/titan-dump/eval_output/p5.rot_scale-10deg-valid-2018-05-28--12-33-53
+Mean of 200 labels: 0.7373450609261831
+/d/students/dnn/titan-dump/eval_output/p5.rot_scale-15deg-small_valid-2018-05-27--13-55-19
+Mean of 180 labels: 0.7181300230108221
+/d/students/dnn/titan-dump/eval_output/p5.rot_scale-15deg-valid-2018-05-28--00-35-21
+Mean of 200 labels: 0.7255555989977813
+/d/students/dnn/titan-dump/eval_output/p5.rot_scale-15deg-valid-2018-05-28--10-13-15
+Mean of 1000 labels: 0.7268059979135671
+/d/students/dnn/titan-dump/eval_output/p6.dilations-10deg-small_valid-2018-05-27--17-28-15
+Mean of 180 labels: 0.7507400537559603
+/d/students/dnn/titan-dump/eval_output/p6.dilations-10deg-valid-2018-05-28--00-35-42
+Mean of 200 labels: 0.7539646823661867
+/d/students/dnn/titan-dump/eval_output/p6.dilations-10deg-valid-2018-05-28--08-19-18
+Mean of 800 labels: 0.7516110727174332
+/d/students/dnn/titan-dump/eval_output/p6.dilations-small_valid-2018-05-27--12-31-33
+Mean of 180 labels: 0.7259279440276357
+/d/students/dnn/titan-dump/eval_output/p6.dilations-valid-2018-05-27--19-28-20
+Mean of 200 labels: 0.7340920877658966
+
+$ python eval_score.py "/d/students/dnn/titan-dump/eval_output/ensemble-small-valid"
+Mean of 180 labels: 0.7579815138365147
+$ python eval_score.py "/d/students/dnn/titan-dump/eval_output/ensemble-valid/"
+Mean of 200 labels: 0.7628852051973594
+
+$ python eval_score.py "/d/students/dnn/titan-dump/eval_output/ensemble-small-valid-better-subset/"
+Mean of 180 labels: 0.7665325593828602
+$ python eval_score.py "/d/students/dnn/titan-dump/eval_output/ensemble-valid-better-subset/"
+Mean of 200 labels: 0.7715593119471825
+
+$ python eval_score.py "/d/students/dnn/titan-dump/eval_output/ensemble-small-valid-test2/"
+Mean of 180 labels: 0.764435038065167
+$ python eval_score.py "/d/students/dnn/titan-dump/eval_output/ensemble-valid-test2/"
+Mean of 200 labels: 0.7649726168040233
+
+$ python eval_score.py "/d/students/dnn/titan-dump/eval_output/ensemble-final-check/"
+Mean of 1180 labels: 0.7702374879063633
+
+# pokrycie z etykietami od Wojtka
+$ python eval_score.py "/d/students/dnn/titan-dump/eval_output/ensemble-conTEST-better-subset/"
+Mean of 2000 labels: 0.7464917285496033

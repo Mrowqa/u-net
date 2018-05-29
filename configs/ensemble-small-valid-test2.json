@@ -1,0 +1,12 @@
+{
+  "prefix": "D:/students/dnn/titan-dump/eval_output",
+  "output_dir": "ensemble-small-valid-test2",
+  "inputs": [
+    "p4.rescale_dil-small_valid-*",
+    "p4.rescale2-small_valid-*",
+    "p5.rot_scale-10deg-small_valid-*",
+
+    "p6.dilations-10deg-small_valid-*"
+
+  ]
+}

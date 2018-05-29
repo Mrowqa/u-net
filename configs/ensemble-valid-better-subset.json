@@ -1,0 +1,12 @@
+{
+  "prefix": "D:/students/dnn/titan-dump/eval_output",
+  "output_dir": "ensemble-valid-better-subset",
+  "inputs": [
+    "p4.rescale2-valid-*",
+    "p4.rescale_dil-valid-*",
+
+
+    "p6.dilations-10deg-valid-*"
+    
+  ]
+}
